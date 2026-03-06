@@ -4,6 +4,7 @@ import hmac
 import hashlib
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
 from aiogram import Bot
 from fastapi import FastAPI, Request, Header, HTTPException
@@ -20,13 +21,23 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")
 
 app = FastAPI()
-bot: Bot | None = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
+bot: Optional[Bot] = None
 
 
 @app.on_event("startup")
 async def startup_event():
+    global bot
     init_db()
     logger.info("SQLite initialized")
+
+    if BOT_TOKEN:
+        try:
+            bot = Bot(token=BOT_TOKEN)
+            logger.info("Bot client initialized")
+        except Exception:
+            bot = None
+            logger.exception("Invalid BOT_TOKEN; admin notifications are disabled")
+
     if not BOT_TOKEN:
         logger.warning("BOT_TOKEN is empty; admin notifications are disabled")
     if not ADMIN_CHAT_ID:
