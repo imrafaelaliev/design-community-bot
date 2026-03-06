@@ -1,0 +1,26 @@
+import sqlite3
+
+conn = sqlite3.connect("subscriptions.db", check_same_thread=False)
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    telegram_user_id INTEGER PRIMARY KEY,
+    subscription_status TEXT,
+    expires_at TEXT
+)
+""")
+
+conn.commit()
+
+
+def update_subscription(user_id, status, expires_at):
+    cursor.execute("""
+    INSERT INTO users (telegram_user_id, subscription_status, expires_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(telegram_user_id) DO UPDATE SET
+    subscription_status=excluded.subscription_status,
+    expires_at=excluded.expires_at
+    """, (user_id, status, expires_at))
+
+    conn.commit()
