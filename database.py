@@ -6,10 +6,19 @@ DB_PATH = os.getenv("SQLITE_DB_PATH", "subscriptions.db")
 
 
 def _get_connection() -> sqlite3.Connection:
-    db_dir = os.path.dirname(DB_PATH)
+    db_path = DB_PATH
+    db_dir = os.path.dirname(db_path)
     if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except OSError:
+            db_path = "subscriptions.db"
+
+    try:
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+    except sqlite3.OperationalError:
+        conn = sqlite3.connect("subscriptions.db", check_same_thread=False)
+
     conn.row_factory = sqlite3.Row
     return conn
 

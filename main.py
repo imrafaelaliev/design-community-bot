@@ -4,9 +4,8 @@ import hmac
 import hashlib
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any
 
-from aiogram import Bot
 from fastapi import FastAPI, Request, Header, HTTPException
 from dotenv import load_dotenv
 from database import init_db, update_subscription
@@ -21,18 +20,23 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")
 
 app = FastAPI()
-bot: Optional[Bot] = None
+bot: Any = None
 
 
 @app.on_event("startup")
 async def startup_event():
     global bot
-    init_db()
-    logger.info("SQLite initialized")
+    try:
+        init_db()
+        logger.info("SQLite initialized")
+    except Exception:
+        logger.exception("Failed to initialize SQLite; service will keep running")
 
     if BOT_TOKEN:
         try:
-            bot = Bot(token=BOT_TOKEN)
+            from aiogram import Bot as AiogramBot
+
+            bot = AiogramBot(token=BOT_TOKEN)
             logger.info("Bot client initialized")
         except Exception:
             bot = None
