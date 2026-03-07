@@ -17,6 +17,7 @@ from aiogram.types import (
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
+    Update,
 )
 from fastapi import FastAPI, Request, Header, HTTPException
 from dotenv import load_dotenv
@@ -32,6 +33,13 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")
 COMMUNITY_INVITE_URL = os.getenv("COMMUNITY_INVITE_URL", "")
 TRIBUTE_SUBSCRIBE_URL = os.getenv("TRIBUTE_SUBSCRIBE_URL", "")
+APP_BASE_URL = os.getenv("APP_BASE_URL", "") or os.getenv("RENDER_EXTERNAL_URL", "")
+TELEGRAM_WEBHOOK_PATH = os.getenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook")
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+TELEGRAM_WEBHOOK_URL = os.getenv("TELEGRAM_WEBHOOK_URL", "")
+
+if not TELEGRAM_WEBHOOK_URL and APP_BASE_URL:
+    TELEGRAM_WEBHOOK_URL = f"{APP_BASE_URL.rstrip('/')}{TELEGRAM_WEBHOOK_PATH}"
 
 app = FastAPI()
 bot: Any = None
@@ -262,11 +270,20 @@ async def startup_event():
             bot = AiogramBot(token=BOT_TOKEN)
             logger.info("Bot client initialized")
 
-            await bot.delete_webhook(drop_pending_updates=False)
-            polling_task = asyncio.create_task(
-                dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-            )
-            logger.info("Bot polling started")
+            allowed_updates = dp.resolve_used_update_types()
+            if TELEGRAM_WEBHOOK_URL:
+                await bot.set_webhook(
+                    url=TELEGRAM_WEBHOOK_URL,
+                    allowed_updates=allowed_updates,
+                    secret_token=TELEGRAM_WEBHOOK_SECRET or None,
+                )
+                logger.info("Telegram webhook set to %s", TELEGRAM_WEBHOOK_URL)
+            else:
+                await bot.delete_webhook(drop_pending_updates=False)
+                polling_task = asyncio.create_task(
+                    dp.start_polling(bot, allowed_updates=allowed_updates)
+                )
+                logger.info("Bot polling started (no webhook url configured)")
         except Exception:
             bot = None
             logger.exception("Invalid BOT_TOKEN; admin notifications are disabled")
@@ -289,6 +306,27 @@ async def shutdown_event():
 
     if bot is not None:
         await bot.session.close()
+
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(
+    request: Request,
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+):
+    if bot is None:
+        raise HTTPException(status_code=503, detail="Bot is not initialized")
+
+    if TELEGRAM_WEBHOOK_SECRET and x_telegram_bot_api_secret_token != TELEGRAM_WEBHOOK_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid Telegram webhook secret")
+
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Telegram webhook payload")
+
+    update = Update.model_validate(data)
+    await dp.feed_update(bot, update)
+    return {"ok": True}
 
 
 async def notify_admin_about_cancelled_subscription(
