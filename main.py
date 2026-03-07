@@ -44,6 +44,7 @@ BTN_PRICE = "Сколько стоит"
 BTN_JOIN = "Вступить"
 BTN_ENTER_COMMUNITY = "Войти в сообщество"
 BTN_MY_SUBSCRIPTION = "Моя подписка"
+BTN_START = "Начать"
 
 
 def _parse_expires_at(expires_at: str | None) -> datetime | None:
@@ -85,12 +86,13 @@ def _get_active_until(telegram_user_id: int) -> datetime | None:
 
 def _build_main_reply_keyboard(include_enter_button: bool) -> ReplyKeyboardMarkup:
     keyboard: list[list[KeyboardButton]] = [
+        [KeyboardButton(text=BTN_START)],
         [KeyboardButton(text=BTN_INSIDE), KeyboardButton(text=BTN_BENEFITS)],
         [KeyboardButton(text=BTN_PRICE), KeyboardButton(text=BTN_JOIN)],
         [KeyboardButton(text=BTN_MY_SUBSCRIPTION)],
     ]
     if include_enter_button:
-        keyboard.insert(0, [KeyboardButton(text=BTN_ENTER_COMMUNITY)])
+        keyboard.insert(1, [KeyboardButton(text=BTN_ENTER_COMMUNITY)])
     return ReplyKeyboardMarkup(
         keyboard=keyboard,
         resize_keyboard=True,
@@ -114,6 +116,10 @@ def _format_active_until(expires_at: datetime) -> str:
 
 @dp.message(CommandStart())
 async def start_handler(message: Message) -> None:
+    await show_start_screen(message)
+
+
+async def show_start_screen(message: Message) -> None:
     if message.from_user is None:
         return
 
@@ -136,6 +142,11 @@ async def start_handler(message: Message) -> None:
         ),
         reply_markup=_build_main_reply_keyboard(include_enter_button=False),
     )
+
+
+@dp.message(F.text == BTN_START)
+async def start_button_handler(message: Message) -> None:
+    await show_start_screen(message)
 
 
 @dp.callback_query(F.data == "community_link_unavailable")
