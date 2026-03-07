@@ -3,12 +3,22 @@ import json
 import hmac
 import hashlib
 import logging
+import asyncio
+from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
 
+from aiogram import Dispatcher, F
+from aiogram.filters import CommandStart
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from fastapi import FastAPI, Request, Header, HTTPException
 from dotenv import load_dotenv
-from database import init_db, update_subscription
+from database import get_subscription, init_db, update_subscription
 
 load_dotenv()
 
@@ -18,14 +28,116 @@ logger = logging.getLogger(__name__)
 TRIBUTE_API_KEY = os.getenv("TRIBUTE_API_KEY", "")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")
+COMMUNITY_INVITE_URL = os.getenv("COMMUNITY_INVITE_URL", "")
 
 app = FastAPI()
 bot: Any = None
+dp = Dispatcher()
+polling_task: asyncio.Task[Any] | None = None
+
+
+def _parse_expires_at(expires_at: str | None) -> datetime | None:
+    if not expires_at:
+        return None
+
+    normalized = expires_at.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+
+    try:
+        dt = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _get_active_until(telegram_user_id: int) -> datetime | None:
+    subscription = get_subscription(telegram_user_id)
+    if subscription is None:
+        return None
+
+    _, status, expires_at_raw = subscription
+    if status != "active":
+        return None
+
+    expires_at = _parse_expires_at(expires_at_raw)
+    if expires_at is None:
+        return None
+
+    if expires_at <= datetime.now(timezone.utc):
+        return None
+
+    return expires_at
+
+
+def _build_active_keyboard() -> InlineKeyboardMarkup:
+    if COMMUNITY_INVITE_URL:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Войти в сообщество", url=COMMUNITY_INVITE_URL)]
+            ]
+        )
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Войти в сообщество", callback_data="community_link_unavailable")]
+        ]
+    )
+
+
+def _build_welcome_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Что внутри", callback_data="menu_inside")],
+            [InlineKeyboardButton(text="Что я получу", callback_data="menu_benefits")],
+            [InlineKeyboardButton(text="Сколько стоит", callback_data="menu_price")],
+            [InlineKeyboardButton(text="Вступить", callback_data="menu_join")],
+        ]
+    )
+
+
+@dp.message(CommandStart())
+async def start_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+
+    telegram_user_id = message.from_user.id
+    active_until = _get_active_until(telegram_user_id)
+
+    if active_until is not None:
+        await message.answer(
+            f"Подписка активна до {active_until.strftime('%d.%m.%Y %H:%M UTC')}",
+            reply_markup=_build_active_keyboard(),
+        )
+        return
+
+    await message.answer(
+        (
+            "Привет! Это закрытое сообщество для дизайнеров.\n"
+            "Здесь — практика, разборы, лекции и сильное окружение,\n"
+            "которое помогает расти быстрее и не вариться в одиночку.\n\n"
+            "Выбирай, что хочешь узнать."
+        ),
+        reply_markup=_build_welcome_keyboard(),
+    )
+
+
+@dp.callback_query(F.data == "community_link_unavailable")
+async def community_link_unavailable_handler(callback: CallbackQuery) -> None:
+    await callback.answer("Ссылка на сообщество пока не настроена", show_alert=True)
+
+
+@dp.callback_query()
+async def menu_placeholder_handler(callback: CallbackQuery) -> None:
+    await callback.answer("Раздел в разработке")
 
 
 @app.on_event("startup")
 async def startup_event():
-    global bot
+    global bot, polling_task
     try:
         init_db()
         logger.info("SQLite initialized")
@@ -38,6 +150,12 @@ async def startup_event():
 
             bot = AiogramBot(token=BOT_TOKEN)
             logger.info("Bot client initialized")
+
+            await bot.delete_webhook(drop_pending_updates=False)
+            polling_task = asyncio.create_task(
+                dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+            )
+            logger.info("Bot polling started")
         except Exception:
             bot = None
             logger.exception("Invalid BOT_TOKEN; admin notifications are disabled")
@@ -50,6 +168,14 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    global polling_task
+
+    if polling_task is not None:
+        polling_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await polling_task
+        polling_task = None
+
     if bot is not None:
         await bot.session.close()
 
