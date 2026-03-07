@@ -14,7 +14,9 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
     Message,
+    ReplyKeyboardMarkup,
 )
 from fastapi import FastAPI, Request, Header, HTTPException
 from dotenv import load_dotenv
@@ -29,11 +31,19 @@ TRIBUTE_API_KEY = os.getenv("TRIBUTE_API_KEY", "")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")
 COMMUNITY_INVITE_URL = os.getenv("COMMUNITY_INVITE_URL", "")
+TRIBUTE_SUBSCRIBE_URL = os.getenv("TRIBUTE_SUBSCRIBE_URL", "")
 
 app = FastAPI()
 bot: Any = None
 dp = Dispatcher()
 polling_task: asyncio.Task[Any] | None = None
+
+BTN_INSIDE = "Что внутри"
+BTN_BENEFITS = "Что я получу"
+BTN_PRICE = "Сколько стоит"
+BTN_JOIN = "Вступить"
+BTN_ENTER_COMMUNITY = "Войти в сообщество"
+BTN_MY_SUBSCRIPTION = "Моя подписка"
 
 
 def _parse_expires_at(expires_at: str | None) -> datetime | None:
@@ -73,30 +83,33 @@ def _get_active_until(telegram_user_id: int) -> datetime | None:
     return expires_at
 
 
-def _build_active_keyboard() -> InlineKeyboardMarkup:
-    if COMMUNITY_INVITE_URL:
+def _build_main_reply_keyboard(include_enter_button: bool) -> ReplyKeyboardMarkup:
+    keyboard: list[list[KeyboardButton]] = [
+        [KeyboardButton(text=BTN_INSIDE), KeyboardButton(text=BTN_BENEFITS)],
+        [KeyboardButton(text=BTN_PRICE), KeyboardButton(text=BTN_JOIN)],
+        [KeyboardButton(text=BTN_MY_SUBSCRIPTION)],
+    ]
+    if include_enter_button:
+        keyboard.insert(0, [KeyboardButton(text=BTN_ENTER_COMMUNITY)])
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def _build_url_inline_button(title: str, url: str, fallback_callback: str) -> InlineKeyboardMarkup:
+    if url:
         return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Войти в сообщество", url=COMMUNITY_INVITE_URL)]
-            ]
+            inline_keyboard=[[InlineKeyboardButton(text=title, url=url)]]
         )
-
     return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Войти в сообщество", callback_data="community_link_unavailable")]
-        ]
+        inline_keyboard=[[InlineKeyboardButton(text=title, callback_data=fallback_callback)]]
     )
 
 
-def _build_welcome_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Что внутри", callback_data="menu_inside")],
-            [InlineKeyboardButton(text="Что я получу", callback_data="menu_benefits")],
-            [InlineKeyboardButton(text="Сколько стоит", callback_data="menu_price")],
-            [InlineKeyboardButton(text="Вступить", callback_data="menu_join")],
-        ]
-    )
+def _format_active_until(expires_at: datetime) -> str:
+    return expires_at.strftime("%d.%m.%Y %H:%M UTC")
 
 
 @dp.message(CommandStart())
@@ -109,8 +122,8 @@ async def start_handler(message: Message) -> None:
 
     if active_until is not None:
         await message.answer(
-            f"Подписка активна до {active_until.strftime('%d.%m.%Y %H:%M UTC')}",
-            reply_markup=_build_active_keyboard(),
+            f"Подписка активна до {_format_active_until(active_until)}",
+            reply_markup=_build_main_reply_keyboard(include_enter_button=True),
         )
         return
 
@@ -121,13 +134,100 @@ async def start_handler(message: Message) -> None:
             "которое помогает расти быстрее и не вариться в одиночку.\n\n"
             "Выбирай, что хочешь узнать."
         ),
-        reply_markup=_build_welcome_keyboard(),
+        reply_markup=_build_main_reply_keyboard(include_enter_button=False),
     )
 
 
 @dp.callback_query(F.data == "community_link_unavailable")
 async def community_link_unavailable_handler(callback: CallbackQuery) -> None:
     await callback.answer("Ссылка на сообщество пока не настроена", show_alert=True)
+
+
+@dp.message(F.text == BTN_INSIDE)
+async def inside_handler(message: Message) -> None:
+    await message.answer(
+        (
+            "Внутри сообщества:\n"
+            "— регулярные design lab и практические разборы\n"
+            "— лекции и вебинары по дизайну и карьере\n"
+            "— разборы портфолио\n"
+            "— общение с дизайнерами разного уровня\n"
+            "— среда для системного развития"
+        )
+    )
+
+
+@dp.message(F.text == BTN_BENEFITS)
+async def benefits_handler(message: Message) -> None:
+    await message.answer(
+        (
+            "Что ты получишь:\n"
+            "— больше практики, а не только теории\n"
+            "— обратную связь на свои работы\n"
+            "— доступ к опыту практикующих дизайнеров\n"
+            "— понятную среду для роста\n"
+            "— сильное профессиональное окружение"
+        )
+    )
+
+
+@dp.message(F.text == BTN_PRICE)
+async def price_handler(message: Message) -> None:
+    await message.answer(
+        (
+            "Подписка на сообщество — 790 ₽ в месяц.\n\n"
+            "Оплата происходит внутри Telegram через Tribute.\n"
+            "Подписку можно отменить в любой момент."
+        )
+    )
+
+
+@dp.message(F.text == BTN_JOIN)
+async def join_handler(message: Message) -> None:
+    await message.answer(
+        "Готово. Нажми кнопку ниже, чтобы оплатить подписку и вступить в сообщество.",
+        reply_markup=_build_url_inline_button(
+            title="Оплатить подписку",
+            url=TRIBUTE_SUBSCRIBE_URL,
+            fallback_callback="subscribe_link_unavailable",
+        ),
+    )
+
+
+@dp.message(F.text == BTN_MY_SUBSCRIPTION)
+async def my_subscription_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    active_until = _get_active_until(message.from_user.id)
+    if active_until is None:
+        await message.answer("У тебя пока нет активной подписки.")
+        return
+    await message.answer(f"Подписка активна до {_format_active_until(active_until)}")
+
+
+@dp.message(F.text == BTN_ENTER_COMMUNITY)
+async def enter_community_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+
+    active_until = _get_active_until(message.from_user.id)
+    if active_until is None:
+        await message.answer("Подписка не активна. Нажми «Вступить», чтобы оплатить доступ.")
+        return
+
+    await message.answer(
+        f"Подписка активна до {_format_active_until(active_until)}",
+        reply_markup=_build_url_inline_button(
+            title=BTN_ENTER_COMMUNITY,
+            url=COMMUNITY_INVITE_URL,
+            fallback_callback="community_link_unavailable",
+        ),
+    )
+
+
+@dp.callback_query(F.data == "subscribe_link_unavailable")
+async def subscribe_link_unavailable_handler(callback: CallbackQuery) -> None:
+    await callback.answer("Ссылка на оплату пока не настроена", show_alert=True)
 
 
 @dp.callback_query()
