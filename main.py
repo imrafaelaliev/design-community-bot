@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from aiogram import Dispatcher, F
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -173,6 +173,11 @@ async def inside_handler(message: Message) -> None:
     )
 
 
+@dp.message(Command("about"))
+async def about_command_handler(message: Message) -> None:
+    await inside_handler(message)
+
+
 @dp.message(F.text == BTN_BENEFITS)
 async def benefits_handler(message: Message) -> None:
     await message.answer(
@@ -187,6 +192,11 @@ async def benefits_handler(message: Message) -> None:
     )
 
 
+@dp.message(Command("get"))
+async def get_command_handler(message: Message) -> None:
+    await benefits_handler(message)
+
+
 @dp.message(F.text == BTN_PRICE)
 async def price_handler(message: Message) -> None:
     await message.answer(
@@ -196,6 +206,11 @@ async def price_handler(message: Message) -> None:
             "Подписку можно отменить в любой момент."
         )
     )
+
+
+@dp.message(Command("price"))
+async def price_command_handler(message: Message) -> None:
+    await price_handler(message)
 
 
 @dp.message(F.text == BTN_JOIN)
@@ -210,6 +225,11 @@ async def join_handler(message: Message) -> None:
     )
 
 
+@dp.message(Command("join"))
+async def join_command_handler(message: Message) -> None:
+    await join_handler(message)
+
+
 @dp.message(F.text == BTN_MY_SUBSCRIPTION)
 async def my_subscription_handler(message: Message) -> None:
     if message.from_user is None:
@@ -219,6 +239,11 @@ async def my_subscription_handler(message: Message) -> None:
         await message.answer("У тебя пока нет активной подписки.")
         return
     await message.answer(f"Подписка активна до {_format_active_until(active_until)}")
+
+
+@dp.message(Command("mysubscribe"))
+async def mysubscribe_command_handler(message: Message) -> None:
+    await my_subscription_handler(message)
 
 
 @dp.message(F.text == BTN_ENTER_COMMUNITY)
