@@ -389,26 +389,37 @@ async def _process_telegram_update(update: Update) -> None:
         logger.exception("Failed to process Telegram update")
 
 
+async def _notify_admin(text: str) -> None:
+    if bot is None or not ADMIN_CHAT_ID:
+        return
+    try:
+        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=text)
+    except Exception:
+        logger.exception("Failed to send admin notification to ADMIN_CHAT_ID=%s", ADMIN_CHAT_ID)
+
+
+async def notify_admin_about_new_subscription(
+    telegram_user_id: int,
+    expires_at: str | None,
+) -> None:
+    text = (
+        "Новая подписка\n"
+        f"user_id: {telegram_user_id}\n"
+        f"expires_at: {expires_at or 'не передан'}"
+    )
+    await _notify_admin(text)
+
+
 async def notify_admin_about_cancelled_subscription(
     telegram_user_id: int,
     expires_at: str | None,
 ) -> None:
-    if bot is None or not ADMIN_CHAT_ID:
-        return
-
     text = (
         "Отмена подписки\n"
         f"user_id: {telegram_user_id}\n"
         f"expires_at: {expires_at or 'не передан'}"
     )
-
-    try:
-        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=text)
-    except Exception:
-        logger.exception(
-            "Failed to send cancellation notification to ADMIN_CHAT_ID=%s",
-            ADMIN_CHAT_ID,
-        )
+    await _notify_admin(text)
 
 
 def verify_tribute_signature(raw_body: bytes, signature: str | None) -> bool:
@@ -485,6 +496,7 @@ async def tribute_webhook(
 
     if event_name == "new_subscription":
         update_subscription(telegram_user_id, "active", expires_at)
+        await notify_admin_about_new_subscription(telegram_user_id, expires_at)
         logger.info(
             "NEW SUBSCRIPTION | telegram_user_id=%s | expires_at=%s",
             telegram_user_id,
