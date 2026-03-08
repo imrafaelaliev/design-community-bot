@@ -57,6 +57,14 @@ BTN_JOIN = "Вступить"
 BTN_ENTER_COMMUNITY = "Войти в сообщество"
 BTN_MY_SUBSCRIPTION = "Моя подписка"
 
+UNKNOWN_COMMAND_TEXT = (
+    "К сожалению, такой команды не существует\n\n"
+    "Доступные команды:\n"
+    "/about\n"
+    "/get\n"
+    "/join"
+)
+
 
 def _parse_expires_at(expires_at: str | None) -> datetime | None:
     if not expires_at:
@@ -244,6 +252,11 @@ async def my_subscription_handler(message: Message) -> None:
 @dp.message(Command("mysubscribe"))
 async def mysubscribe_command_handler(message: Message) -> None:
     await my_subscription_handler(message)
+
+
+@dp.message(F.text.regexp(r"^/[^\s]+"))
+async def unknown_command_handler(message: Message) -> None:
+    await message.answer(UNKNOWN_COMMAND_TEXT)
 
 
 @dp.message(F.text == BTN_ENTER_COMMUNITY)
