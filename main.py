@@ -34,12 +34,16 @@ ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")
 COMMUNITY_INVITE_URL = os.getenv("COMMUNITY_INVITE_URL", "")
 TRIBUTE_SUBSCRIBE_URL = os.getenv("TRIBUTE_SUBSCRIBE_URL", "")
 APP_BASE_URL = os.getenv("APP_BASE_URL", "") or os.getenv("RENDER_EXTERNAL_URL", "")
+RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME", "")
 TELEGRAM_WEBHOOK_PATH = os.getenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook")
 TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 TELEGRAM_WEBHOOK_URL = os.getenv("TELEGRAM_WEBHOOK_URL", "")
 
-if not TELEGRAM_WEBHOOK_URL and APP_BASE_URL:
-    TELEGRAM_WEBHOOK_URL = f"{APP_BASE_URL.rstrip('/')}{TELEGRAM_WEBHOOK_PATH}"
+if not TELEGRAM_WEBHOOK_URL:
+    if APP_BASE_URL:
+        TELEGRAM_WEBHOOK_URL = f"{APP_BASE_URL.rstrip('/')}{TELEGRAM_WEBHOOK_PATH}"
+    elif RENDER_EXTERNAL_HOSTNAME:
+        TELEGRAM_WEBHOOK_URL = f"https://{RENDER_EXTERNAL_HOSTNAME}{TELEGRAM_WEBHOOK_PATH}"
 
 app = FastAPI()
 bot: Any = None
@@ -318,8 +322,15 @@ async def telegram_webhook(
         raise HTTPException(status_code=400, detail="Invalid Telegram webhook payload")
 
     update = Update.model_validate(data)
-    await dp.feed_update(bot, update)
+    asyncio.create_task(_process_telegram_update(update))
     return {"ok": True}
+
+
+async def _process_telegram_update(update: Update) -> None:
+    try:
+        await dp.feed_update(bot, update)
+    except Exception:
+        logger.exception("Failed to process Telegram update")
 
 
 async def notify_admin_about_cancelled_subscription(
