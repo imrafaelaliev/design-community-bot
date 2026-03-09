@@ -56,6 +56,7 @@ BTN_PRICE = "Сколько стоит"
 BTN_JOIN = "Вступить"
 BTN_ENTER_COMMUNITY = "Войти в сообщество"
 BTN_MY_SUBSCRIPTION = "Моя подписка"
+BTN_HELP = "Помощь"
 
 UNKNOWN_COMMAND_TEXT = (
     "К сожалению, такой команды не существует\n\n"
@@ -90,6 +91,11 @@ ABOUT_COMMUNITY_TEXT = (
     "все получится, то в будущем мы увидим много взошедших звездочек, которые просто вовремя "
     "получили поддержку опытных коллег, не сдались и добились своего. Таким образом мы сможем "
     "продолжить развивать дизайн в стране"
+)
+
+HELP_TEXT = (
+    "Если у вас возникли проблемы с использованием бота, "
+    "то, пожалуйста, напишите @imrafaelaliev"
 )
 
 
@@ -134,7 +140,7 @@ def _build_main_reply_keyboard(include_enter_button: bool) -> ReplyKeyboardMarku
     keyboard: list[list[KeyboardButton]] = [
         [KeyboardButton(text=BTN_INSIDE), KeyboardButton(text=BTN_BENEFITS)],
         [KeyboardButton(text=BTN_PRICE), KeyboardButton(text=BTN_JOIN)],
-        [KeyboardButton(text=BTN_MY_SUBSCRIPTION)],
+        [KeyboardButton(text=BTN_MY_SUBSCRIPTION), KeyboardButton(text=BTN_HELP)],
     ]
     if include_enter_button:
         keyboard.insert(1, [KeyboardButton(text=BTN_ENTER_COMMUNITY)])
@@ -270,6 +276,16 @@ async def my_subscription_handler(message: Message) -> None:
 @dp.message(Command("mysubscribe"))
 async def mysubscribe_command_handler(message: Message) -> None:
     await my_subscription_handler(message)
+
+
+@dp.message(F.text == BTN_HELP)
+async def help_handler(message: Message) -> None:
+    await message.answer(HELP_TEXT)
+
+
+@dp.message(Command("help"))
+async def help_command_handler(message: Message) -> None:
+    await help_handler(message)
 
 
 @dp.message(F.text.regexp(r"^/[^\s]+"))
