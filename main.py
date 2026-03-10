@@ -333,6 +333,11 @@ async def enter_community_handler(message: Message) -> None:
     )
 
 
+@dp.message(F.text)
+async def unknown_text_handler(message: Message) -> None:
+    await message.answer(UNKNOWN_COMMAND_TEXT, reply_markup=_keyboard_for_message(message))
+
+
 @dp.callback_query(F.data == "subscribe_link_unavailable")
 async def subscribe_link_unavailable_handler(callback: CallbackQuery) -> None:
     await callback.answer("Ссылка на оплату пока не настроена", show_alert=True)
