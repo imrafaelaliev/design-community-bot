@@ -98,6 +98,8 @@ HELP_TEXT = (
     "то, пожалуйста, напишите @imrafaelaliev"
 )
 
+PAYMENT_SUCCESS_TEXT = "Отлично, оплата принята. Желаю отличного прибывания на Даче!"
+
 
 def _parse_expires_at(expires_at: str | None) -> datetime | None:
     if not expires_at:
@@ -432,6 +434,15 @@ async def _notify_admin(text: str) -> None:
         logger.exception("Failed to send admin notification to ADMIN_CHAT_ID=%s", ADMIN_CHAT_ID)
 
 
+async def notify_user_about_new_subscription(telegram_user_id: int) -> None:
+    if bot is None:
+        return
+    try:
+        await bot.send_message(chat_id=telegram_user_id, text=PAYMENT_SUCCESS_TEXT)
+    except Exception:
+        logger.exception("Failed to send new subscription message to user_id=%s", telegram_user_id)
+
+
 async def notify_admin_about_new_subscription(
     telegram_user_id: int,
     expires_at: str | None,
@@ -530,6 +541,7 @@ async def tribute_webhook(
 
     if event_name == "new_subscription":
         update_subscription(telegram_user_id, "active", expires_at)
+        await notify_user_about_new_subscription(telegram_user_id)
         await notify_admin_about_new_subscription(telegram_user_id, expires_at)
         logger.info(
             "NEW SUBSCRIPTION | telegram_user_id=%s | expires_at=%s",
