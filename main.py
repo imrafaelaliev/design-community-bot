@@ -165,6 +165,13 @@ def _format_active_until(expires_at: datetime) -> str:
     return expires_at.strftime("%d.%m.%Y %H:%M UTC")
 
 
+def _keyboard_for_message(message: Message) -> ReplyKeyboardMarkup:
+    if message.from_user is None:
+        return _build_main_reply_keyboard(include_enter_button=False)
+    include_enter_button = _get_active_until(message.from_user.id) is not None
+    return _build_main_reply_keyboard(include_enter_button=include_enter_button)
+
+
 @dp.message(CommandStart())
 async def start_handler(message: Message) -> None:
     await show_start_screen(message)
@@ -202,7 +209,7 @@ async def community_link_unavailable_handler(callback: CallbackQuery) -> None:
 
 @dp.message(F.text == BTN_INSIDE)
 async def inside_handler(message: Message) -> None:
-    await message.answer(ABOUT_COMMUNITY_TEXT)
+    await message.answer(ABOUT_COMMUNITY_TEXT, reply_markup=_keyboard_for_message(message))
 
 
 @dp.message(Command("about"))
@@ -220,7 +227,8 @@ async def benefits_handler(message: Message) -> None:
             "— доступ к опыту практикующих дизайнеров\n"
             "— понятную среду для роста\n"
             "— сильное профессиональное окружение"
-        )
+        ),
+        reply_markup=_keyboard_for_message(message),
     )
 
 
@@ -236,7 +244,8 @@ async def price_handler(message: Message) -> None:
             "Подписка на сообщество — 790 ₽ в месяц.\n\n"
             "Оплата происходит внутри Telegram через Tribute.\n"
             "Подписку можно отменить в любой момент."
-        )
+        ),
+        reply_markup=_keyboard_for_message(message),
     )
 
 
@@ -268,9 +277,15 @@ async def my_subscription_handler(message: Message) -> None:
         return
     active_until = _get_active_until(message.from_user.id)
     if active_until is None:
-        await message.answer("У тебя пока нет активной подписки.")
+        await message.answer(
+            "У тебя пока нет активной подписки.",
+            reply_markup=_keyboard_for_message(message),
+        )
         return
-    await message.answer(f"Подписка активна до {_format_active_until(active_until)}")
+    await message.answer(
+        f"Подписка активна до {_format_active_until(active_until)}",
+        reply_markup=_keyboard_for_message(message),
+    )
 
 
 @dp.message(Command("mysubscribe"))
@@ -280,7 +295,7 @@ async def mysubscribe_command_handler(message: Message) -> None:
 
 @dp.message(F.text == BTN_HELP)
 async def help_handler(message: Message) -> None:
-    await message.answer(HELP_TEXT)
+    await message.answer(HELP_TEXT, reply_markup=_keyboard_for_message(message))
 
 
 @dp.message(Command("help"))
@@ -290,7 +305,7 @@ async def help_command_handler(message: Message) -> None:
 
 @dp.message(F.text.regexp(r"^/[^\s]+"))
 async def unknown_command_handler(message: Message) -> None:
-    await message.answer(UNKNOWN_COMMAND_TEXT)
+    await message.answer(UNKNOWN_COMMAND_TEXT, reply_markup=_keyboard_for_message(message))
 
 
 @dp.message(F.text == BTN_ENTER_COMMUNITY)
@@ -300,7 +315,10 @@ async def enter_community_handler(message: Message) -> None:
 
     active_until = _get_active_until(message.from_user.id)
     if active_until is None:
-        await message.answer("Подписка не активна. Нажми «Вступить», чтобы оплатить доступ.")
+        await message.answer(
+            "Подписка не активна. Нажми «Вступить», чтобы оплатить доступ.",
+            reply_markup=_keyboard_for_message(message),
+        )
         return
 
     await message.answer(
